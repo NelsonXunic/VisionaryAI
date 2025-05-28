@@ -7,3 +7,5 @@ torch==2.3.0 # Or tensorflow if you prefer; ensure CPU or CUDA support
 Pillow==10.3.0
 python-dotenv==1.0.0
 pydantic==2.7.1 # FastAPI dependency, good to explicitly include
+celery==5.3.6 
+redis==5.0.0 # For Celery backend 

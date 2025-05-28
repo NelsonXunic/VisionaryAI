@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import os
 from dotenv import load_dotenv
 from celery_worker import debug_task, generate_caption, answer_question_on_image, generate_speech 
-
+import logging
 import base64
 
 load_dotenv() # Load environment variables from .env file
@@ -14,6 +14,10 @@ app = FastAPI(
     description="API for image captioning, VQA, and text-to-speech.",
     version="0.1.0",
 )
+
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 # CORS Middleware: Crucial for frontend-backend communication during development
 origins = [
@@ -70,12 +74,14 @@ async def caption_image(file: UploadFile = File(...)):
     Receives an image, sends it to Celery for captioning, and returns the task ID.
     """
     if not file.content_type.startswith("image/"):
+        logger.error(f"Received non-image file: {file.content_type}")
         raise HTTPException(status_code=400, detail="Only image files are allowed.")
 
     image_bytes = await file.read()
     image_base64 = base64.b64encode(image_bytes).decode('utf-8')
 
     task = generate_caption.delay(image_base64)
+    logger.info(f"Image captioning task initiated with ID: {task.id}")
     return {"task_id": task.id, "message": "Image captioning task initiated."}
 
 @app.post("/answer_question")
@@ -84,12 +90,14 @@ async def answer_question(file: UploadFile = File(...), question: str = Form(...
     Receives an image and a question, sends them to Celery for VQA, and returns the task ID.
     """
     if not file.content_type.startswith("image/"):
+        logger.error(f"Received non-image file: {file.content_type}")
         raise HTTPException(status_code=400, detail="Only image files are allowed.")
 
     image_bytes = await file.read()
     image_base64 = base64.b64encode(image_bytes).decode('utf-8')
 
     task = answer_question_on_image.delay(image_base64, question)
+    logger.info(f"VQA task initiated with ID: {task.id}")
     return {"task_id": task.id, "message": "VQA task initiated."}
 
 @app.post("/generate_speech")
@@ -98,4 +106,5 @@ async def generate_speech_endpoint(text: str = Form(...)):
     Receives text, sends it to Celery for TTS, and returns the task ID.
     """
     task = generate_speech.delay(text)
+    logger.info(f"TTS task initiated with ID: {task.id}")
     return {"task_id": task.id, "message": "TTS task initiated."}

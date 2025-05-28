@@ -14,6 +14,8 @@ import numpy as np
 # to replace old model loading
 from ai_models.core import captioner, vqa_pipeline, tts_processor, tts_model
 
+import logging
+
 load_dotenv() # Load environment variables
 
 # Configure Celery to connect to Redis
@@ -27,6 +29,10 @@ celery_app = Celery(
     backend=CELERY_RESULT_BACKEND,
     include=['main'] # We'll move tasks here later, or create a tasks.py
 )
+
+# Configure logging for Celery worker
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 celery_app.conf.update(
     task_track_started=True,
@@ -57,11 +63,13 @@ def generate_caption(self, image_base64_string: str):
         # Generate caption
         caption = captioner(image)[0]['generated_text']
 
-        print(f"Generated caption: {caption}")
+        # print(f"Generated caption: {caption}")
+        logger.info(f"Generated caption: {caption}")
         return {"caption": caption}
     except Exception as e:
         self.update_state(state='FAILURE', meta={'exc_type': type(e).__name__, 'exc_message': str(e)}) # Update task state on failure
-        print(f"Error generating caption: {e}")
+        # print(f"Error generating caption: {e}")
+        logger.error(f"Error generating caption: {e}", exc_info=True) # exc_info=True to log traceback
         raise # Re-raise the exception to mark the task as failed
 
 @celery_app.task(bind=True)
@@ -73,11 +81,13 @@ def answer_question_on_image(self, image_base64_string: str, question: str):
         # Generate answer
         answer = vqa_pipeline(image=image, question=question)[0]['answer']
 
-        print(f"Answer for '{question}': {answer}")
+        # print(f"Answer for '{question}': {answer}")
+        logger.info(f"Answer for '{question}': {answer}")
         return {"answer": answer}
     except Exception as e:
         self.update_state(state='FAILURE', meta={'exc_type': type(e).__name__, 'exc_message': str(e)}) # Update task state on failure
-        print(f"Error answering question: {e}")
+        # print(f"Error answering question: {e}")
+        logger.error(f"Error answering question: {e}", exc_info=True)
         raise
 
 @celery_app.task(bind=True)
@@ -90,15 +100,17 @@ def generate_speech(self, text: str):
         # Normalize to 16-bit PCM for WAV
         audio_np = (audio_np * 32767).astype(np.int16)
 
-        # Save to a BytesIO object (in-memory file) as WAV [cite: 64]
+        # Save to a BytesIO object (in-memory file) as WAV
         buffer = io.BytesIO()
         wavfile.write(buffer, tts_model.config.sampling_rate, audio_np)
 
         audio_base64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
 
-        print(f"Generated speech for: '{text}' (size: {len(audio_base64) / 1024:.2f} KB)")
+        # print(f"Generated speech for: '{text}' (size: {len(audio_base64) / 1024:.2f} KB)")
+        logger.info(f"Generated speech for '{text}' (size: {len(audio_base64) / 1024:.2f} KB)")
         return {"audio_base64": audio_base64, "format": "wav"}
     except Exception as e:
-        self.update_state(state='FAILURE', meta={'exc_type': type(e).__name__, 'exc_message': str(e)}) # Update task state on failure [cite: 64]
-        print(f"Error generating speech: {e}") [cite: 65]
+        self.update_state(state='FAILURE', meta={'exc_type': type(e).__name__, 'exc_message': str(e)}) # Update task state on failure 
+        # print(f"Error generating speech: {e}") 
+        logger.error(f"Error generating speech: {e}", exc_info=True)
         raise

@@ -1,13 +1,11 @@
 # backend/main.py
-from fastapi import FastAPI
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import os
 from dotenv import load_dotenv
-from celery_worker import debug_task # Import celery_app and task
+from celery_worker import debug_task, generate_caption, answer_question_on_image 
 
-from fastapi import UploadFile, File, HTTPException
 import base64
-from celery_worker import generate_caption # Import the new task
 
 load_dotenv() # Load environment variables from .env file
 
@@ -79,3 +77,17 @@ async def caption_image(file: UploadFile = File(...)):
 
     task = generate_caption.delay(image_base64)
     return {"task_id": task.id, "message": "Image captioning task initiated."}
+
+@app.post("/answer_question")
+async def answer_question(file: UploadFile = File(...), question: str = Form(...)):
+    """
+    Receives an image and a question, sends them to Celery for VQA, and returns the task ID.
+    """
+    if not file.content_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail="Only image files are allowed.")
+
+    image_bytes = await file.read()
+    image_base64 = base64.b64encode(image_bytes).decode('utf-8')
+
+    task = answer_question_on_image.delay(image_base64, question)
+    return {"task_id": task.id, "message": "VQA task initiated."}

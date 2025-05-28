@@ -11,6 +11,9 @@ import base64
 import scipy.io.wavfile as wavfile
 import numpy as np
 
+# to replace old model loading
+from ai_models.core import captioner, vqa_pipeline, tts_processor, tts_model
+
 load_dotenv() # Load environment variables
 
 # Configure Celery to connect to Redis
@@ -34,22 +37,6 @@ celery_app.conf.update(
     enable_utc=True,
     broker_connection_retry_on_startup=True # Important for Docker scenarios
 )
-
-# Global model for image captioning
-print("Loading image captioning model...")
-captioner = pipeline("image-to-text", model="Salesforce/blip-image-captioning-base")
-print("Image captioning model loaded.")
-
-# Global model for Visual Question Answering
-print("Loading VQA model...")
-vqa_pipeline = pipeline("visual-question-answering", model="dandelin/vilt-b32-finetuned-vqa")
-print("VQA model loaded.")
-
-# Global models for Text-to-Speech
-print("Loading TTS processor and model...")
-tts_processor = AutoProcessor.from_pretrained("facebook/musicgen-small")
-tts_model = MusicgenForConditionalGeneration.from_pretrained("facebook/musicgen-small")
-print("TTS models loaded.")
 
 @celery_app.task
 def debug_task(message):

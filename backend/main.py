@@ -3,6 +3,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import os
 from dotenv import load_dotenv
+from celery_worker import debug_task # Import celery_app and task
 
 load_dotenv() # Load environment variables from .env file
 
@@ -16,7 +17,7 @@ app = FastAPI(
 origins = [
     "http://localhost:3000",  # Frontend development server (React/Next.js default)
     "http://127.0.0.1:3000",
-    # Add other origins if your frontend runs on a different port/domain
+    # Add other origins if frontend runs on a different port/domain
 ]
 
 app.add_middleware(
@@ -40,3 +41,23 @@ async def ping():
 async def env_test():
     test_var = os.getenv("TEST_ENV_VAR", "Not Set")
     return {"test_variable": test_var}
+
+@app.get("/test_celery")
+async def test_celery_task():
+    """
+    Sends a simple debug task to the Celery worker.
+    """
+    task = debug_task.delay("This is a test message from FastAPI.")
+    return {"task_id": task.id, "message": "Celery task sent successfully."}
+
+@app.get("/task_status/{task_id}")
+async def get_task_status(task_id: str):
+    """
+    Retrieves the status and result of a Celery task by ID.
+    """
+    task_result = debug_task.AsyncResult(task_id)
+    return {
+        "task_id": task_id,
+        "status": task_result.status,
+        "result": task_result.result if task_result.ready() else None
+    }

@@ -3,10 +3,13 @@ from celery import Celery
 import os
 from dotenv import load_dotenv
 
-from transformers import pipeline
+from transformers import pipeline, AutoProcessor, MusicgenForConditionalGeneration
 from PIL import Image
 import io
 import base64
+
+import scipy.io.wavfile as wavfile
+import numpy as np
 
 load_dotenv() # Load environment variables
 
@@ -41,6 +44,12 @@ print("Image captioning model loaded.")
 print("Loading VQA model...")
 vqa_pipeline = pipeline("visual-question-answering", model="dandelin/vilt-b32-finetuned-vqa")
 print("VQA model loaded.")
+
+# Global models for Text-to-Speech
+print("Loading TTS processor and model...")
+tts_processor = AutoProcessor.from_pretrained("facebook/musicgen-small")
+tts_model = MusicgenForConditionalGeneration.from_pretrained("facebook/musicgen-small")
+print("TTS models loaded.")
 
 @celery_app.task
 def debug_task(message):
@@ -82,4 +91,27 @@ def answer_question_on_image(self, image_base64_string: str, question: str):
     except Exception as e:
         self.update_state(state='FAILURE', meta={'exc_type': type(e).__name__, 'exc_message': str(e)}) # Update task state on failure
         print(f"Error answering question: {e}")
+        raise
+
+@celery_app.task(bind=True)
+def generate_speech(self, text: str):
+    try:
+        inputs = tts_processor(text=text, sampling_rate=tts_model.config.sampling_rate, return_tensors="pt")
+        audio_values = tts_model.generate(**inputs, do_sample=True, guidance_scale=3.0, max_new_tokens=256)
+        # Convert audio to a suitable format (e.g., WAV bytes) and base64 encode
+        audio_np = audio_values[0, 0].cpu().numpy()
+        # Normalize to 16-bit PCM for WAV
+        audio_np = (audio_np * 32767).astype(np.int16)
+
+        # Save to a BytesIO object (in-memory file) as WAV [cite: 64]
+        buffer = io.BytesIO()
+        wavfile.write(buffer, tts_model.config.sampling_rate, audio_np)
+
+        audio_base64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
+
+        print(f"Generated speech for: '{text}' (size: {len(audio_base64) / 1024:.2f} KB)")
+        return {"audio_base64": audio_base64, "format": "wav"}
+    except Exception as e:
+        self.update_state(state='FAILURE', meta={'exc_type': type(e).__name__, 'exc_message': str(e)}) # Update task state on failure [cite: 64]
+        print(f"Error generating speech: {e}") [cite: 65]
         raise

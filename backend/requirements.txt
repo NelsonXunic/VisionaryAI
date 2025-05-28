@@ -19,3 +19,7 @@ safetensors==0.4.3
 # must match torch version
 torchvision==0.18.0
 torchaudio==2.3.0
+# Additional libraries for audio processing TTS
+soundfile==0.12.1
+scipy==1.13.0
+librosa==0.10.1

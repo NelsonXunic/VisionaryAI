@@ -37,6 +37,11 @@ print("Loading image captioning model...")
 captioner = pipeline("image-to-text", model="Salesforce/blip-image-captioning-base")
 print("Image captioning model loaded.")
 
+# Global model for Visual Question Answering
+print("Loading VQA model...")
+vqa_pipeline = pipeline("visual-question-answering", model="dandelin/vilt-b32-finetuned-vqa")
+print("VQA model loaded.")
+
 @celery_app.task
 def debug_task(message):
     """
@@ -62,3 +67,19 @@ def generate_caption(self, image_base64_string: str):
         self.update_state(state='FAILURE', meta={'exc_type': type(e).__name__, 'exc_message': str(e)}) # Update task state on failure
         print(f"Error generating caption: {e}")
         raise # Re-raise the exception to mark the task as failed
+
+@celery_app.task(bind=True)
+def answer_question_on_image(self, image_base64_string: str, question: str):
+    try:
+        image_bytes = base64.b64decode(image_base64_string)
+        image = Image.open(io.BytesIO(image_bytes))
+
+        # Generate answer
+        answer = vqa_pipeline(image=image, question=question)[0]['answer']
+
+        print(f"Answer for '{question}': {answer}")
+        return {"answer": answer}
+    except Exception as e:
+        self.update_state(state='FAILURE', meta={'exc_type': type(e).__name__, 'exc_message': str(e)}) # Update task state on failure
+        print(f"Error answering question: {e}")
+        raise

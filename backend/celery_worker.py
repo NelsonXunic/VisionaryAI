@@ -3,6 +3,11 @@ from celery import Celery
 import os
 from dotenv import load_dotenv
 
+from transformers import pipeline
+from PIL import Image
+import io
+import base64
+
 load_dotenv() # Load environment variables
 
 # Configure Celery to connect to Redis
@@ -27,6 +32,11 @@ celery_app.conf.update(
     broker_connection_retry_on_startup=True # Important for Docker scenarios
 )
 
+# Global model for image captioning
+print("Loading image captioning model...")
+captioner = pipeline("image-to-text", model="Salesforce/blip-image-captioning-base")
+print("Image captioning model loaded.")
+
 @celery_app.task
 def debug_task(message):
     """
@@ -34,3 +44,21 @@ def debug_task(message):
     """
     print(f"Executing debug task: {message}")
     return f"Task completed: {message}"
+
+@celery_app.task(bind=True)
+def generate_caption(self, image_base64_string: str):
+    try:
+        # Decode the base64 string to bytes
+        image_bytes = base64.b64decode(image_base64_string)
+        # Open the image using PIL
+        image = Image.open(io.BytesIO(image_bytes))
+
+        # Generate caption
+        caption = captioner(image)[0]['generated_text']
+
+        print(f"Generated caption: {caption}")
+        return {"caption": caption}
+    except Exception as e:
+        self.update_state(state='FAILURE', meta={'exc_type': type(e).__name__, 'exc_message': str(e)}) # Update task state on failure
+        print(f"Error generating caption: {e}")
+        raise # Re-raise the exception to mark the task as failed

@@ -16,20 +16,86 @@ export default function Home() {
 
   const handleImageSelect = (image: File | string | null) => { 
     setSelectedImage(image);
-    if (image) {
-      console.log('Image selected:', image);
-  
-    } else {
-      console.log('Image selection cleared.');
-    }
+    setCaption(null); // Reset caption when a new image is selected
+    setError(null); // Reset error state
   };
 
-  const handleGenerateVision = () => { // function to handle the button click
-    if (selectedImage) {
-      alert(`Generating vision for: ${typeof selectedImage === 'string' ? selectedImage : selectedImage.name}`);
-      // In the future, this is where we'd call backend AI API
-    } else {
+  const handleGenerateVision = async () => { // function to handle the button click
+    if (!selectedImage) {
       alert('Please select an image first!');
+      return;
+    }
+
+    setIsLoading(true);
+    setError(null); // Reset error state
+    setCaption(null); // Reset caption before generating a new one
+
+    try {
+      const formData = new FormData();
+      const isFile = selectedImage instanceof File;
+      if (isFile) {
+        formData.append('image', selectedImage); // Append the file if it's a File object
+      }
+      else {
+        alert('Image URL input is not supported yet. Please upload a file.');
+        setIsLoading(false);
+        return;
+      }
+
+      const response = await fetch(`${BACKEND_URL}/caption_image`, {
+        method: 'POST',
+        body: formData,
+      });
+
+      if(!response.ok) {
+        const errorData = await response.json();
+        // Check if 'detail' exists, a common for FastAPI validation errors we want to avoid again
+        if (errorData && Array.isArray(errorData.detail) && errorData.detail.length > 0) {
+        const validationErrors = errorData.detail.map((err: any) => `${err.loc.join('.')} - ${err.msg}`);
+        throw new Error(`Validation Error: ${validationErrors.join(', ')}`);
+      } else if (errorData && errorData.detail) {
+        throw new Error(errorData.detail);
+      } else {
+        throw new Error(`HTTP error! Status: ${response.status} - ${response.statusText || 'Unknown Error'}`);
+      }
+      }
+      const data = await response.json();
+      console.log('Caption task initiated:', data);
+
+      // now we can poll for the result
+      let taskStatusResponse;
+      let taskResult;
+      let status = 'PENDING';
+      const taskId = data.task_id;
+
+      while (status === 'PENDING' || status === 'RUNNING') {
+        await new Promise(resolve => setTimeout(resolve, 2000)); // Poll every 2 seconds
+        taskStatusResponse = await fetch(`${BACKEND_URL}/task_status/${taskId}`);
+        if (!taskStatusResponse.ok) {
+          const errorData = await taskStatusResponse.json();
+          throw new Error(errorData.detail || `Failed to fetch task status: ${taskStatusResponse.status}`);
+        }
+        taskResult = await taskStatusResponse.json();
+        status = taskResult.status;
+        console.log(`Task ${taskId} statusß: ${status}`);
+      }
+      if (status === 'SUCCESS') {
+        setCaption(taskResult.result.caption);
+      } else if (status === 'FAILURE') {
+        setError(`Captioning failed: ${taskResult.result.exc_message || 'Unknown error'}`);
+      }
+
+    } catch (err: unknown) {
+      let errorMessage = 'An unexpected error occurred.'; 
+      if (err instanceof Error) {
+        errorMessage = err.message;
+      } else if (typeof err === 'string') {
+        errorMessage = err;
+      }
+      console.error('Error generating caption:', err);
+      setError(errorMessage); // Set error state to display the error message
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -67,7 +133,7 @@ export default function Home() {
             <ImageInput onImageSelect={handleImageSelect} /> 
           </div>
 
-          {/* Textarea for additional text input (e.g., for VQA later) */}
+          {/* Text area for additional text input (e.g., for VQA later) */}
           <h3 className="text-2xl font-semibold text-gray-800 mb-4">
             Add Text Prompt (Optional for VQA or TTS)
           </h3>
@@ -80,8 +146,9 @@ export default function Home() {
           <Button
             onClick={handleGenerateVision} // Call the new handler
             className="bg-green-500 hover:bg-green-600 text-white px-8 py-4 text-lg rounded-md shadow-md"
+            disabled = {isLoading} // Disable button while loading
           >
-            Generate Vision
+            {isLoading ? 'Generating...' : 'Generate Vision'}
           </Button>
         </div>
       </section>
@@ -92,9 +159,19 @@ export default function Home() {
             Your Vision Came to Life
           </h2>
           <div className="bg-white p-6 md:p-8 border border-gray-300 rounded-lg shadow-inner text-gray-700 min-h-[200px] flex items-center justify-center">
-            <p className="text-xl italic text-gray-500">
-              AI-generated output will appear here...
-            </p>
+            {isLoading && <p className="text-xl text-blue-600">Processing your vision...</p>}
+            {error && <p className="text-xl text-red-600">Error: {error}</p>}
+            {caption && !isLoading && !error && (
+              <div className="text-left w-full">
+                <h3 className="font-semibold text-2xl mb-2 text-gray-900">Image Caption:</h3>
+                <p className="text-xl text-gray-800">{caption}</p>
+              </div>
+            )}
+            {!isLoading && !error && !caption && (
+              <p className="text-xl italic text-gray-500">
+                AI-generated output will appear here...
+              </p>
+            )}
           </div>
         </div>
       </section>

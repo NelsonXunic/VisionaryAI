@@ -69,15 +69,15 @@ async def get_task_status(task_id: str):
     }
 
 @app.post("/caption_image")
-async def caption_image(file: UploadFile = File(...)):
+async def caption_image(image: UploadFile = File(...)):
     """
     Receives an image, sends it to Celery for captioning, and returns the task ID.
     """
-    if not file.content_type.startswith("image/"):
-        logger.error(f"Received non-image file: {file.content_type}")
+    if not image.content_type.startswith("image/"):
+        logger.error(f"Received non-image file: {image.content_type}")
         raise HTTPException(status_code=400, detail="Only image files are allowed.")
 
-    image_bytes = await file.read()
+    image_bytes = await image.read()
     image_base64 = base64.b64encode(image_bytes).decode('utf-8')
 
     task = generate_caption.delay(image_base64)

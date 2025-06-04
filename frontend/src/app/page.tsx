@@ -38,6 +38,18 @@ export default function Home() {
           </Button>
         </div>
       </section>
+      <section className="w-full flex-grow flex items-center justify-center p-8 md:p-12 bg-gray-100 border-t border-gray-200">
+        <div className="text-center max-w-3xl w-full">
+          <h2 className="text-3xl md:text-4xl font-bold text-gray-800 mb-6">
+            Your Vision Came to Life
+          </h2>
+          <div className="bg-white p-6 md:p-8 border border-gray-300 rounded-lg shadow-inner text-gray-700 min-h-[200px] flex items-center justify-center">
+            <p className="text-xl italic text-gray-500">
+              AI-generated output will appear here...
+            </p>
+          </div>
+        </div>
+      </section>
     </>  
   );
 }
